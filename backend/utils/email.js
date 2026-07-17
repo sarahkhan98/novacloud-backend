@@ -1,19 +1,4 @@
-const nodemailer = require('nodemailer');
-
-// ── Transporter — Brevo SMTP (works on Railway) ───────────────
-const createTransporter = () => nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || 'smtp-relay.brevo.com',
-  port: parseInt(process.env.EMAIL_PORT) || 587,
-  secure: false,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  tls: { rejectUnauthorized: false },
-  connectionTimeout: 30000,
-  greetingTimeout: 15000,
-  socketTimeout: 30000,
-});
+const axios = require('axios');
 
 // ── Base Template ──────────────────────────────────────────────
 const baseTemplate = (content) => `<!DOCTYPE html><html><head><meta charset="UTF-8">
@@ -38,36 +23,40 @@ const baseTemplate = (content) => `<!DOCTYPE html><html><head><meta charset="UTF
   <div class="footer">© 2025 Novacloud47 — Do not reply to this email.</div>
 </div></body></html>`;
 
-// ── Safe Send ──────────────────────────────────────────────────
+// ── Safe Send via Brevo API ────────────────────────────────────
 const sendMail = async (to, subject, html) => {
-  // Skip email in demo mode
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.log(`[EMAIL SKIP] No credentials — would send to ${to}: ${subject}`);
-    return { success: true, skipped: true };
+  if (!process.env.BREVO_API_KEY || !process.env.EMAIL_USER) {
+    console.log(`[EMAIL SKIP] Missing API Key or Sender Email`);
+    return { success: false, skipped: true };
   }
-  const transporter = createTransporter();
+
   try {
-    const info = await transporter.sendMail({
-      from: process.env.EMAIL_FROM || `Novacloud47 <${process.env.EMAIL_USER}>`,
-      to, subject, html,
+    const response = await axios.post('https://api.brevo.com/v3/smtp/email', {
+      sender: { email: process.env.EMAIL_USER, name: "Novacloud47" },
+      to: [{ email: to }],
+      subject: subject,
+      htmlContent: html
+    }, {
+      headers: {
+        'api-key': process.env.BREVO_API_KEY,
+        'Content-Type': 'application/json'
+      }
     });
-    console.log(`[EMAIL OK] ${to} — ${info.messageId}`);
-    return { success: true, messageId: info.messageId };
+
+    console.log(`[EMAIL OK] ${to} — ${response.data.messageId}`);
+    return { success: true, messageId: response.data.messageId };
   } catch (err) {
-    console.error(`[EMAIL FAIL] ${err.message}`);
-    // Don't crash the app if email fails
+    console.error(`[EMAIL FAIL] ${err.response ? JSON.stringify(err.response.data) : err.message}`);
     return { success: false, error: err.message };
-  } finally {
-    transporter.close();
   }
 };
 
+// ── Export Functions ──────────────────────────────────────────
 exports.sendVerificationEmail = (to, name, token) =>
   sendMail(to, 'Verify Your Novacloud47 Account', baseTemplate(`
     <h2>Welcome, ${name}!</h2>
     <p>Please verify your email to activate your account and start earning.</p>
     <div style="text-align:center"><a href="${process.env.FRONTEND_URL}/verify-email?token=${token}" class="btn">Verify Email Address</a></div>
-    <p style="font-size:0.8rem;color:#4a7090">This link expires in 24 hours.</p>
   `));
 
 exports.sendPasswordResetEmail = (to, name, code) =>
@@ -75,71 +64,48 @@ exports.sendPasswordResetEmail = (to, name, code) =>
     <h2>Password Reset Request</h2>
     <p>Hi ${name}, here is your 6-digit reset code:</p>
     <span class="code">${code}</span>
-    <p class="warn">This code expires in <b>10 minutes</b>. If you did not request this, ignore this email.</p>
   `));
 
 exports.sendDepositApproved = (to, name, amountPKR, amountUSD) =>
   sendMail(to, 'Deposit Approved - Novacloud47', baseTemplate(`
     <h2>Deposit Approved!</h2>
-    <p>Hi ${name}, your deposit has been verified and approved by our team.</p>
-    <div class="info"><b>Amount PKR:</b> Rs. ${Number(amountPKR).toLocaleString()}</div>
-    <div class="info"><b>Amount USD:</b> $${Number(amountUSD).toFixed(2)}</div>
-    <div class="info"><b>Status:</b> <span style="color:#00e5b0">Approved ✓</span></div>
-    <p>Go to <b>Invest</b> section to start earning 0.20% per hour!</p>
+    <p>Hi ${name}, your deposit has been approved.</p>
+    <div class="info"><b>Amount:</b> Rs. ${Number(amountPKR).toLocaleString()}</div>
   `));
 
 exports.sendDepositRejected = (to, name, amountPKR, reason) =>
   sendMail(to, 'Deposit Rejected - Novacloud47', baseTemplate(`
     <h2>Deposit Rejected</h2>
-    <p>Hi ${name}, unfortunately your deposit was rejected.</p>
-    <div class="info"><b>Amount:</b> Rs. ${Number(amountPKR).toLocaleString()}</div>
-    <div class="info"><b>Reason:</b> ${reason || 'Transaction could not be verified.'}</div>
-    <p>Please resubmit with correct payment proof. Contact support if you need help.</p>
+    <p>Hi ${name}, your deposit was rejected.</p>
+    <div class="info"><b>Reason:</b> ${reason}</div>
   `));
 
 exports.sendWithdrawApproved = (to, name, amount, method) =>
   sendMail(to, 'Withdrawal Approved - Novacloud47', baseTemplate(`
     <h2>Withdrawal Approved!</h2>
-    <p>Hi ${name}, your withdrawal has been processed successfully.</p>
-    <div class="info"><b>Amount:</b> $${Number(amount).toFixed(2)} (Rs. ${Math.floor(amount*300).toLocaleString()})</div>
-    <div class="info"><b>Method:</b> ${method}</div>
-    <div class="info"><b>Status:</b> <span style="color:#00e5b0">Sent ✓</span></div>
-    <p>Funds should arrive within 1-24 hours.</p>
+    <p>Hi ${name}, your withdrawal has been processed.</p>
   `));
 
 exports.sendWithdrawRejected = (to, name, amount, reason) =>
   sendMail(to, 'Withdrawal Rejected - Novacloud47', baseTemplate(`
     <h2>Withdrawal Rejected</h2>
     <p>Hi ${name}, your withdrawal request was rejected.</p>
-    <div class="info"><b>Amount:</b> $${Number(amount).toFixed(2)}</div>
-    <div class="info"><b>Reason:</b> ${reason || 'Please contact support.'}</div>
-    <p>The amount has been returned to your earning wallet.</p>
   `));
 
 exports.sendAdminLoginOTP = (to, code, ip) =>
-  sendMail(to, 'Admin Login Verification Code - Novacloud47', baseTemplate(`
+  sendMail(to, 'Admin Login Verification', baseTemplate(`
     <h2>Admin Login Attempt</h2>
-    <p>A login attempt was made to Novacloud47 Admin Panel.</p>
-    <div class="info"><b>IP Address:</b> ${ip}</div>
-    <div class="info"><b>Time:</b> ${new Date().toUTCString()}</div>
-    <p>Your one-time verification code:</p>
-    <span class="code">${code}</span>
-    <p class="warn">Expires in <b>10 minutes</b>. If this was not you — change your password immediately!</p>
+    <p>Code: <span class="code">${code}</span></p>
   `));
 
 exports.sendRankReward = (to, name, rankName, reward) =>
-  sendMail(to, `You reached ${rankName} rank! - Novacloud47`, baseTemplate(`
-    <h2>Rank Achieved!</h2>
-    <p>Congratulations ${name}! You have reached a new rank.</p>
-    <div class="info"><b>New Rank:</b> ${rankName}</div>
-    <div class="info"><b>Reward:</b> <span style="color:#00c8ff">$${Number(reward).toLocaleString()}</span></div>
-    <p>Your reward has been credited to your earning wallet automatically!</p>
+  sendMail(to, `Rank Achieved: ${rankName}`, baseTemplate(`
+    <h2>Congratulations ${name}!</h2>
+    <p>You reached ${rankName}.</p>
   `));
 
 exports.sendAccountSuspended = (to, name, reason) =>
-  sendMail(to, 'Account Suspended - Novacloud47', baseTemplate(`
+  sendMail(to, 'Account Suspended', baseTemplate(`
     <h2>Account Suspended</h2>
-    <p>Hi ${name}, your Novacloud47 account has been suspended.</p>
-    <div class="info"><b>Reason:</b> ${reason || 'Violation of terms of service.'}</div>
-    <p>Contact support if you believe this is an error.</p>
+    <p>Reason: ${reason}</p>
   `));
