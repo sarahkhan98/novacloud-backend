@@ -35,7 +35,7 @@ const server = http.createServer(app);
 
 // ── Allowed origins ────────────────────────────────────────────
 const ALLOWED_ORIGINS = [
-  process.env.FRONTEND_URL || 'https://admin.novacloud47.com',
+  process.env.FRONTEND_URL || 'https://novacloud47.com',
   process.env.ADMIN_URL || 'https://admin.novacloud47.com',
 ].filter(Boolean);
 
