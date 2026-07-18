@@ -51,7 +51,7 @@ router.post('/register', authLimiter, [
     }
 
     // Send verification email
-    await sendVerificationEmail(email, name, verifyToken);
+    // await sendVerificationEmail(email, name, verifyToken);
 
     res.status(201).json({
       success: true,
@@ -93,9 +93,9 @@ router.post('/login', authLimiter, [
       return res.status(401).json({ success: false, message: 'Invalid email or password.' });
     }
 
-    if (!user.isEmailVerified) {
-      return res.status(403).json({ success: false, message: 'Please verify your email first.', code: 'EMAIL_UNVERIFIED' });
-    }
+    //if (!user.isEmailVerified) {
+    //return res.status(403).json({ success: false, message: 'Please verify your email first.', code: 'EMAIL_UNVERIFIED' });
+    //}
 
     if (user.status === 'banned') return res.status(403).json({ success: false, message: 'Account banned.' });
     if (user.status === 'suspended') return res.status(403).json({ success: false, message: 'Account suspended. Contact support.' });
