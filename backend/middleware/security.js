@@ -3,7 +3,7 @@ const helmet = require('helmet');
 const crypto = require('crypto');
 
 // ══════════════════════════════════════════════════════════════
-//  HAMZA INVESTOR — COMPLETE SECURITY MIDDLEWARE
+//  NOVACLOUD47 — COMPLETE SECURITY MIDDLEWARE
 // ══════════════════════════════════════════════════════════════
 
 // ── 1. HELMET — HTTP Security Headers ─────────────────────────
@@ -11,7 +11,7 @@ exports.helmetConfig = helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc:      ["'self'"],
-      scriptSrc:       ["'self'", "https://fonts.googleapis.com"],
+      scriptSrc:       ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       styleSrc:        ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc:         ["'self'", "https://fonts.gstatic.com"],
       imgSrc:          ["'self'", "data:", "https:"],
