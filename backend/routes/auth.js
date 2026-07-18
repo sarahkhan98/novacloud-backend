@@ -42,8 +42,7 @@ router.post('/register', authLimiter, [
     const verifyToken = generateSecureToken();
     const user = await User.create({
       name, email, phone, password, referredBy,
-      emailVerifyToken: crypto.createHash('sha256').update(verifyToken).digest('hex'),
-      emailVerifyExpires: new Date(Date.now() + 24 * 3600000),
+      isEmailVerified: true, // Direct true kar diya taake login block na ho
     });
 
     // Add to referrer's list
