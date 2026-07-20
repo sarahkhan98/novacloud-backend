@@ -362,8 +362,8 @@ router.get('/chats', async (req, res) => {
   try {
     const { status } = req.query;
     const query = status ? { status } : {};
-    const chats = await ChatSession.find(query).sort({ updatedAt: -1 }).populate('user', 'name email userId');
-    res.json({ success: true, chats });
+    const chats = await ChatSession.find(query).sort({ updatedAt: -1 });
+    res.json({ success: true, chats, sessions: chats });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error.' });
   }
