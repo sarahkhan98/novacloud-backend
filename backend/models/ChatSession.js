@@ -6,7 +6,7 @@ const messageSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 const chatSessionSchema = new mongoose.Schema({
-  userId:        { type: String, required: true },  // referralCode/userId string
+  userId:        { type: String, required: true },
   userName:      { type: String, default: 'User' },
   userEmail:     { type: String, default: '' },
   status:        { type: String, enum: ['waiting','active','closed'], default: 'waiting' },
