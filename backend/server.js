@@ -35,14 +35,16 @@ const server = http.createServer(app);
 
 // ── Allowed origins ────────────────────────────────────────────
 const ALLOWED_ORIGINS = [
-  process.env.FRONTEND_URL || 'https://novacloud47.com',
-  process.env.ADMIN_URL || 'https://admin.novacloud47.com',
+  'https://novacloud47.com',
+  'https://www.novacloud47.com',
+  'https://admin.novacloud47.com',
+  process.env.FRONTEND_URL,
+  process.env.ADMIN_URL,
   'http://localhost:3000',
   'http://localhost:5500',
   'http://127.0.0.1:5500',
-  'http://localhost:5000',
+  'http://localhost:5000'
 ].filter(Boolean);
-
 // ── Socket.IO ──────────────────────────────────────────────────
 const io = new Server(server, {
   cors: { origin: ALLOWED_ORIGINS, methods: ['GET','POST'], credentials: true },
