@@ -28,7 +28,7 @@ router.post('/session', protect, async (req, res) => {
 // GET /api/chat/session/:id - Get session messages
 router.get('/session/:id', protect, async (req, res) => {
   try {
-    const session = await ChatSession.findOne({ userId: userId, ... });
+    const session = await ChatSession.findOne({ userId: userId });
     if (!session) return res.status(404).json({ success: false, message: 'Session not found.' });
     res.json({ success: true, session });
   } catch (err) {
