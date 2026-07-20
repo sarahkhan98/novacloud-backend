@@ -7,7 +7,7 @@ const messageSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 const chatSessionSchema = new mongoose.Schema({
-  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  user: { type: String, required: true },
   userName: String,
   userEmail: String,
   status: { type: String, enum: ['waiting', 'active', 'closed'], default: 'waiting' },
