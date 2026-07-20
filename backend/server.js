@@ -37,6 +37,10 @@ const server = http.createServer(app);
 const ALLOWED_ORIGINS = [
   process.env.FRONTEND_URL || 'https://novacloud47.com',
   process.env.ADMIN_URL || 'https://admin.novacloud47.com',
+  'http://localhost:3000',
+  'http://localhost:5500',
+  'http://127.0.0.1:5500',
+  'http://localhost:5000',
 ].filter(Boolean);
 
 // ── Socket.IO ──────────────────────────────────────────────────
@@ -52,7 +56,16 @@ app.set('trust proxy', 1);          // trust Railway/Render reverse proxy
 app.use(enforceHTTPS);              // redirect HTTP → HTTPS in production
 app.use(helmetConfig);              // security headers
 app.use(suspiciousDetector);        // DDOS basic protection
-app.use(cors());
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    console.warn(`[CORS] Blocked request from: ${origin}`);
+    cb(new Error('Not allowed by CORS policy.'));
+  },
+  credentials: true,
+  methods: ['GET','POST','PUT','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization'],
+}));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(sanitize);                  // NoSQL injection
@@ -116,49 +129,53 @@ io.on('connection', (socket) => {
       socket.userName  = userName || 'User';
       socket.userEmail = userEmail || '';
 
-      // Find or create chat session
-      let session = await ChatSession.findOne({ 
-        userId: userId, 
-        status: { $in: ['waiting', 'active'] } 
+      let session = await ChatSession.findOne({
+        userId: userId,
+        status: { $in: ['waiting', 'active'] }
       });
-      
       if (!session) {
         session = await ChatSession.create({
-          userId: userId,
-          userName: socket.userName,
+          userId:    userId,
+          userName:  socket.userName,
           userEmail: socket.userEmail,
-          status: 'waiting',
-          messages: [{ 
-            sender: 'system', 
-            text: '👋 Connected to support. An agent will join shortly.' 
-          }],
+          status:    'waiting',
+          messages:  [{ sender: 'system', text: '👋 Connected to support. An agent will join shortly.' }],
         });
       }
-      
       socket.sessionId = session._id.toString();
       socket.join(`chat:${session._id}`);
 
-      // Notify ALL admins
       io.to('admins').emit('admin:new_chat', {
-        sessionId: session._id.toString(),
+        sessionId:  session._id.toString(),
         userId,
-        userName: socket.userName,
-        userEmail: socket.userEmail,
-        status: session.status,
-        createdAt: session.createdAt,
+        userName:   socket.userName,
+        userEmail:  socket.userEmail,
+        status:     session.status,
+        createdAt:  session.createdAt,
       });
-      
-      socket.emit('chat:session', { 
-        sessionId: session._id.toString(), 
-        status: session.status, 
-        messages: session.messages 
+      socket.emit('chat:session', {
+        sessionId: session._id.toString(),
+        status:    session.status,
+        messages:  session.messages
       });
-      
-      console.log(`[CHAT] User ${userName} joined. Session: ${session._id}`);
-    } catch (err) { 
-      console.error('user:join error:', err.message); 
-    }
+      console.log(`[CHAT] User ${socket.userName} joined. Session: ${session._id}`);
+    } catch (err) { console.error('user:join error:', err.message); }
   });
+
+  socket.on('user:message', async ({ sessionId, text }) => {
+    try {
+      if (!text?.trim() || text.length > 1000 || !sessionId) return;
+      const session = await ChatSession.findById(sessionId);
+      if (!session || session.status === 'closed') return;
+      const msg = { sender: 'user', text: text.trim().replace(/<[^>]+>/g,'') }; // strip HTML
+      session.messages.push(msg);
+      await session.save();
+      const saved = session.messages[session.messages.length - 1];
+      io.to(`chat:${sessionId}`).emit('chat:message', { ...saved.toObject(), sessionId });
+      io.to('admins').emit('admin:chat_message', { sessionId, message: saved, userName: socket.userName });
+    } catch (err) { console.error('user:message error:', err.message); }
+  });
+
   socket.on('admin:join',      ({ adminId }) => { socket.adminId = adminId; socket.join('admins'); });
   socket.on('admin:join_chat', async ({ sessionId, adminId }) => {
     try {
