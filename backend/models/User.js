@@ -8,6 +8,7 @@ const transactionSchema = new mongoose.Schema({
   method: { type: String },
   status: { type: String, enum: ['pending', 'completed', 'rejected'], default: 'pending' },
   txid: { type: String }, // user provided transaction ID
+  slip: { type: String }, // 👈 TE LINE ADD KAREIN (Base64 / Image URL save karne ke liye)
   adminNote: { type: String },
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
   approvedAt: { type: Date },
