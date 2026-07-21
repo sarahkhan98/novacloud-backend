@@ -76,7 +76,7 @@ router.put('/profile', protect, [
 // ── POST /api/user/deposit ─────────────────────────────────────
 router.post('/deposit', protect, transactionLimiter, [
   body('amountPKR').isFloat({ min: 300 }).withMessage('Minimum deposit Rs. 300'),
-  body('method').isIn(['easypaisa', 'jazzcash', 'bank']).withMessage('Invalid method'),
+  body('method').isIn(['sadapay', 'nayapay', 'bank']).withMessage('Invalid method'),
   body('txid').trim().notEmpty().withMessage('Transaction ID required').isLength({ max: 100 }),
 ], async (req, res) => {
   try {
