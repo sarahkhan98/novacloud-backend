@@ -18,44 +18,46 @@ const RANK_DATA = [
 const REF_INVEST = [0.05, 0.04, 0.03, 0.02, 0.01];
 const REF_EARN = [0.05, 0.04, 0.03, 0.02, 0.01];
 
-// ── GET /api/user/profile ──────────────────────────────────────
-router.get('/profile', protect, async (req, res) => {
+// ── POST /api/user/deposit ─────────────────────────────────────
+router.post('/deposit', protect, transactionLimiter, [
+  body('amountPKR').isFloat({ min: 300 }).withMessage('Minimum deposit Rs. 300'),
+  body('method').isIn(['sadapay', 'nayapay', 'bank']).withMessage('Invalid method'),
+  body('txid').trim().notEmpty().withMessage('Transaction ID required').isLength({ max: 100 }),
+], async (req, res) => {
   try {
-    const user = await User.findById(req.user._id)
-      .populate('referrals', 'name userId investedAmount createdAt')
-      .populate('referredBy', 'name userId');
-    
-    const currentEarnings = user.calculateEarnings();
-    
-    res.json({
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, message: errors.array()[0].msg });
+
+    const user = await User.findById(req.user._id);
+    if (user.hasPendingDeposit) return res.status(400).json({ success: false, message: 'You already have a pending deposit. Wait for it to be processed.' });
+
+    // 👇 'slip' req.body se receive kar rahe hain
+    const { amountPKR, method, txid, slip } = req.body;
+    const amountUSD = amountPKR / PKR;
+
+    const tx = {
+      type: 'deposit', 
+      amount: amountUSD, 
+      amountPKR,
+      method, 
+      status: 'pending', 
+      txid,
+      slip: slip || '' // 👇 Transaction object mein slip save kar di
+    };
+    user.transactions.push(tx);
+    user.hasPendingDeposit = true;
+    await user.save();
+
+    res.status(201).json({
       success: true,
-      user: {
-        id: user._id, userId: user.userId, name: user.name,
-        email: user.email, phone: user.phone,
-        depositWallet: user.depositWallet,
-        earningWallet: currentEarnings,
-        investedAmount: user.investedAmount,
-        totalEarned: user.totalEarned,
-        currentRank: user.getCurrentRank(),
-        referralCode: user.referralCode,
-        referrals: user.referrals,
-        referredBy: user.referredBy,
-        teamInvestment: user.teamInvestment,
-        investments: user.investments,
-        transactions: user.transactions.sort((a,b) => b.createdAt - a.createdAt).slice(0, 50),
-        investmentStartedAt: user.investmentStartedAt,
-        rankRewardsClaimed: user.rankRewardsClaimed,
-        rewards: user.rankRewardsClaimed,
-        hasPendingDeposit: user.hasPendingDeposit,
-        hasPendingWithdraw: user.hasPendingWithdraw,
-        createdAt: user.createdAt,
-      },
+      message: 'Deposit submitted. Admin will verify within 10–30 minutes.',
+      transactionId: user.transactions[user.transactions.length - 1]._id,
     });
   } catch (err) {
+    console.error('Deposit error:', err);
     res.status(500).json({ success: false, message: 'Server error.' });
   }
 });
-
 // ── PUT /api/user/profile ──────────────────────────────────────
 router.put('/profile', protect, [
   body('name').optional().trim().notEmpty().isLength({ max: 100 }),
