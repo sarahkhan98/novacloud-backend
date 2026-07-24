@@ -120,109 +120,206 @@ app.use((err, req, res, next) => {
 const ChatSession = require('./models/ChatSession');
 
 io.on('connection', (socket) => {
-  const ip = socket.handshake.address;
 
   socket.on('user:join', async ({ userId, userName, userEmail }) => {
     try {
       if (!userId) return;
-      socket.join(`user:${userId}`);
       socket.userId    = userId;
       socket.userName  = userName || 'User';
       socket.userEmail = userEmail || '';
+      socket.role      = 'user';
+      socket.join(`user:${userId}`);
 
       let session = await ChatSession.findOne({
-        userId: userId,
-        status: { $in: ['waiting', 'active'] }
+        userId, status: { $in: ['waiting', 'active'] }
       });
       if (!session) {
         session = await ChatSession.create({
-          userId:    userId,
+          userId,
           userName:  socket.userName,
           userEmail: socket.userEmail,
           status:    'waiting',
-          messages:  [{ sender: 'system', text: '👋 Connected to support. An agent will join shortly.' }],
+          messages:  [{ sender: 'system', senderName: 'System', text: socket.userName + ' connected to support.', type: 'system' }],
         });
       }
       socket.sessionId = session._id.toString();
-      socket.join(`chat:${session._id}`);
+      socket.join(`chat:${socket.sessionId}`);
 
       io.to('admins').emit('admin:new_chat', {
-        sessionId:  session._id.toString(),
+        sessionId:  socket.sessionId,
         userId,
         userName:   socket.userName,
         userEmail:  socket.userEmail,
         status:     session.status,
+        adminName:  session.adminName,
+        msgCount:   session.messages.length,
         createdAt:  session.createdAt,
       });
+
       socket.emit('chat:session', {
-        sessionId: session._id.toString(),
+        sessionId: socket.sessionId,
         status:    session.status,
-        messages:  session.messages
+        adminName: session.adminName,
+        messages:  session.messages,
       });
-      console.log(`[CHAT] User ${socket.userName} joined. Session: ${session._id}`);
-    } catch (err) { console.error('user:join error:', err.message); }
+
+      console.log(`[CHAT] User "${socket.userName}" joined. Session: ${socket.sessionId}`);
+    } catch (err) {
+      console.error('[CHAT] user:join error:', err.message);
+    }
   });
 
-  socket.on('user:message', async ({ sessionId, text }) => {
+  socket.on('user:message', async ({ sessionId, text, imageUrl }) => {
     try {
-      if (!text?.trim() || text.length > 1000 || !sessionId) return;
+      if (!sessionId) return;
       const session = await ChatSession.findById(sessionId);
       if (!session || session.status === 'closed') return;
-      const msg = { sender: 'user', text: text.trim().replace(/<[^>]+>/g,'') }; // strip HTML
+
+      const msg = {
+        sender:     'user',
+        senderName: session.userName,
+        text:       text || '',
+        imageUrl:   imageUrl || null,
+        type:       imageUrl ? 'image' : 'text',
+      };
       session.messages.push(msg);
       await session.save();
       const saved = session.messages[session.messages.length - 1];
-      io.to(`chat:${sessionId}`).emit('chat:message', { ...saved.toObject(), sessionId });
-      io.to('admins').emit('admin:chat_message', { sessionId, message: saved, userName: socket.userName });
-    } catch (err) { console.error('user:message error:', err.message); }
+
+      io.to(`chat:${sessionId}`).emit('chat:message', {
+        sessionId,
+        sender:     'user',
+        senderName: session.userName,
+        text:       saved.text,
+        imageUrl:   saved.imageUrl,
+        type:       saved.type,
+        _id:        saved._id,
+        createdAt:  saved.createdAt,
+      });
+
+      io.to('admins').emit('admin:chat_message', {
+        sessionId,
+        userName:  session.userName,
+        message:   { text: saved.text, type: saved.type, imageUrl: saved.imageUrl },
+      });
+
+    } catch (err) {
+      console.error('[CHAT] user:message error:', err.message);
+    }
   });
 
-  socket.on('admin:join',      ({ adminId }) => { socket.adminId = adminId; socket.join('admins'); });
-  socket.on('admin:join_chat', async ({ sessionId, adminId }) => {
+  socket.on('admin:join', ({ adminId }) => {
+    socket.role    = 'admin';
+    socket.adminId = adminId || 'admin';
+    socket.join('admins');
+    console.log(`[CHAT] Admin connected to admin room`);
+  });
+
+  socket.on('admin:join_chat', async ({ sessionId, adminName }) => {
     try {
+      if (!sessionId) return;
       socket.join(`chat:${sessionId}`);
-      const session = await ChatSession.findByIdAndUpdate(
-        sessionId, { status: 'active', assignedAdmin: adminId }, { new: true }
-      );
-      const sysMsg = { sender: 'system', text: '✅ Support agent has joined the chat.' };
+      socket.sessionId = sessionId;
+
+      const session = await ChatSession.findById(sessionId);
+      if (!session) return;
+
+      session.status    = 'active';
+      session.adminName = adminName || 'Support Agent';
+
+      const sysMsg = {
+        sender:     'system',
+        senderName: 'System',
+        text:       session.adminName + ' joined this chat.',
+        type:       'system',
+      };
       session.messages.push(sysMsg);
       await session.save();
-      io.to(`chat:${sessionId}`).emit('chat:agent_joined', { sessionId, message: sysMsg });
-    } catch (err) { console.error('admin:join_chat error:', err.message); }
+      const saved = session.messages[session.messages.length - 1];
+
+      io.to(`chat:${sessionId}`).emit('chat:message', {
+        sessionId,
+        sender:     'system',
+        senderName: 'System',
+        text:       saved.text,
+        type:       'system',
+        _id:        saved._id,
+        createdAt:  saved.createdAt,
+      });
+
+      io.to(`chat:${sessionId}`).emit('chat:agent_joined', {
+        sessionId,
+        adminName: session.adminName,
+      });
+
+      io.to('admins').emit('admin:chat_updated', {
+        sessionId,
+        status:    'active',
+        adminName: session.adminName,
+      });
+
+      console.log(`[CHAT] Admin "${session.adminName}" joined session ${sessionId}`);
+    } catch (err) {
+      console.error('[CHAT] admin:join_chat error:', err.message);
+    }
   });
 
-  socket.on('admin:message', async ({ sessionId, text }) => {
+  socket.on('admin:message', async ({ sessionId, text, imageUrl, adminName }) => {
     try {
-      if (!text?.trim() || text.length > 1000) return;
+      if (!sessionId) return;
       const session = await ChatSession.findById(sessionId);
       if (!session || session.status === 'closed') return;
-      const msg = { sender: 'admin', text: text.trim().replace(/<[^>]+>/g,'') };
+
+      const msg = {
+        sender:     'admin',
+        senderName: adminName || session.adminName || 'Support Agent',
+        text:       text || '',
+        imageUrl:   imageUrl || null,
+        type:       imageUrl ? 'image' : 'text',
+      };
       session.messages.push(msg);
       await session.save();
       const saved = session.messages[session.messages.length - 1];
-      io.to(`chat:${sessionId}`).emit('chat:message', { ...saved.toObject(), sessionId });
-    } catch (err) { console.error('admin:message error:', err.message); }
+
+      io.to(`chat:${sessionId}`).emit('chat:message', {
+        sessionId,
+        sender:     'admin',
+        senderName: saved.senderName,
+        text:       saved.text,
+        imageUrl:   saved.imageUrl,
+        type:       saved.type,
+        _id:        saved._id,
+        createdAt:  saved.createdAt,
+      });
+
+    } catch (err) {
+      console.error('[CHAT] admin:message error:', err.message);
+    }
   });
 
-  socket.on('admin:close_chat', async ({ sessionId }) => {
+  socket.on('admin:end_chat', async ({ sessionId }) => {
     try {
-      await ChatSession.findByIdAndUpdate(sessionId, { status: 'closed', closedAt: new Date() });
+      if (!sessionId) return;
+      const session = await ChatSession.findById(sessionId);
+      if (!session) return;
+      session.status = 'closed';
+      const sysMsg = { sender: 'system', senderName: 'System', text: 'Chat ended by support agent.', type: 'system' };
+      session.messages.push(sysMsg);
+      await session.save();
+
       io.to(`chat:${sessionId}`).emit('chat:closed', { sessionId });
-      io.to('admins').emit('admin:chat_closed', { sessionId });
-    } catch (err) { console.error('admin:close_chat error:', err.message); }
+      io.to('admins').emit('admin:chat_updated', { sessionId, status: 'closed' });
+      console.log(`[CHAT] Session ${sessionId} closed`);
+    } catch (err) {
+      console.error('[CHAT] admin:end_chat error:', err.message);
+    }
   });
 
-  socket.on('user:feedback', async ({ sessionId, rating }) => {
-    try {
-      if (!rating || rating < 1 || rating > 5) return;
-      await ChatSession.findByIdAndUpdate(sessionId, { feedback: { rating, submittedAt: new Date() } });
-      io.to('admins').emit('admin:feedback', { sessionId, rating });
-    } catch (err) { console.error('user:feedback error:', err.message); }
+  socket.on('disconnect', () => {
+    console.log(`[SOCKET] Disconnected: ${socket.role || 'unknown'}`);
   });
 
-  socket.on('disconnect', () => { /* cleanup handled by socket.io */ });
 });
-
 // ── MongoDB + Start ────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 
