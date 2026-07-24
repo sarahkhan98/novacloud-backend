@@ -1,4 +1,4 @@
-require('dotenv').config();
+  require('dotenv').config();
 
 // ── Validate required env vars at startup ─────────────────────
 const REQUIRED_ENV = ['MONGODB_URI','JWT_SECRET','JWT_REFRESH_SECRET','ADMIN_EMAIL','ADMIN_PASSWORD'];
@@ -38,13 +38,12 @@ const ALLOWED_ORIGINS = [
   'https://novacloud47.com',
   'https://www.novacloud47.com',
   'https://admin.novacloud47.com',
-  process.env.FRONTEND_URL,
-  process.env.ADMIN_URL,
   'http://localhost:3000',
   'http://localhost:5500',
   'http://127.0.0.1:5500',
-  'http://localhost:5000'
+  'http://localhost:5000',
 ].filter(Boolean);
+
 // ── Socket.IO ──────────────────────────────────────────────────
 const io = new Server(server, {
   cors: { origin: ALLOWED_ORIGINS, methods: ['GET','POST'], credentials: true },
