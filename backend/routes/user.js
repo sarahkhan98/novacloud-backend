@@ -300,5 +300,29 @@ async function distributeReferralCommission(user, investAmount, commType) {
     console.error('Referral commission error:', err);
   }
 }
-
+router.get('/profile', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('-password');
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    res.json({
+      success: true,
+      user: {
+        name:             user.name,
+        email:            user.email,
+        phone:            user.phone,
+        userId:           user.userId || user.referralCode,
+        referralCode:     user.referralCode,
+        depositWallet:    user.depositWallet || 0,
+        earningWallet:    user.earningWallet || 0,
+        investedAmount:   user.investedAmount || 0,
+        totalEarned:      user.totalEarned || 0,
+        transactions:     user.transactions || [],
+        investments:      user.investments || [],
+        rewards:          user.rewards || [],
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
 module.exports = router;
