@@ -301,7 +301,7 @@ async function distributeReferralCommission(user, investAmount, commType) {
     console.error('Referral commission error:', err);
   }
 }
-router.get('/profile', auth, async (req, res) => {
+router.get('/profile', protect, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('-password');
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
