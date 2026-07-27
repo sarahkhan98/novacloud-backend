@@ -33,24 +33,6 @@ const chatRoutes      = require('./routes/chat');
 const app    = express();
 const server = http.createServer(app);
 
-// SEO Routes
-app.get('/sitemap.xml', (req, res) => {
-  res.header('Content-Type', 'text/xml');
-  res.send(`<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>https://novacloud47.com/</loc>
-    <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>1.0</priority>
-  </url>
-</urlset>`);
-});
-
-app.get('/robots.txt', (req, res) => {
-  res.type('text/plain');
-  res.send("User-agent: *\nAllow: /\nSitemap: https://novacloud47.com/sitemap.xml");
-});
 // ── Allowed origins ────────────────────────────────────────────
 const ALLOWED_ORIGINS = [
   'https://novacloud47.com',
