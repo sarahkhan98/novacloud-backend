@@ -1,4 +1,5 @@
-  require('dotenv').config();
+app.get('/sitemap.xml', (req, res) => { ... });
+require('dotenv').config();
 
 // ── Validate required env vars at startup ─────────────────────
 const REQUIRED_ENV = ['MONGODB_URI','JWT_SECRET','JWT_REFRESH_SECRET','ADMIN_EMAIL','ADMIN_PASSWORD'];
