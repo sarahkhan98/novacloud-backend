@@ -1,4 +1,3 @@
-app.get('/sitemap.xml', (req, res) => { ... });
 require('dotenv').config();
 
 // ── Validate required env vars at startup ─────────────────────
@@ -33,10 +32,11 @@ const chatRoutes      = require('./routes/chat');
 
 const app    = express();
 const server = http.createServer(app);
-// --- SEO Routes ---
+
+// SEO Routes
 app.get('/sitemap.xml', (req, res) => {
-  res.header('Content-Type', 'application/xml');
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+  res.header('Content-Type', 'text/xml');
+  res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://novacloud47.com/</loc>
@@ -44,13 +44,12 @@ app.get('/sitemap.xml', (req, res) => {
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
-</urlset>`;
-  res.send(xml);
+</urlset>`);
 });
 
 app.get('/robots.txt', (req, res) => {
   res.type('text/plain');
-  res.send(`User-agent: *\nAllow: /\nSitemap: https://novacloud47.com/sitemap.xml`);
+  res.send("User-agent: *\nAllow: /\nSitemap: https://novacloud47.com/sitemap.xml");
 });
 // ── Allowed origins ────────────────────────────────────────────
 const ALLOWED_ORIGINS = [
