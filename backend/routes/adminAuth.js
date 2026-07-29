@@ -15,16 +15,23 @@ router.post('/login', adminIPCheck, adminLimiter, async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ success: false, message: 'Email and password required.' });
 
-    // Only ONE admin allowed
-    if (email.toLowerCase() !== process.env.ADMIN_EMAIL.toLowerCase()) {
+    const allowedEmails = [
+      process.env.ADMIN_EMAIL.toLowerCase(),
+      (process.env.ADMIN_EMAIL_2 || '').toLowerCase(),
+      (process.env.ADMIN_EMAIL_3 || '').toLowerCase(),
+    ].filter(e => e);
+    if (!allowedEmails.includes(email.toLowerCase())) {
       return res.status(401).json({ success: false, message: 'Invalid credentials.' });
     }
 
     let admin = await Admin.findOne({ email: email.toLowerCase() });
 
-    // First time: create admin account
-    if (!admin) {
-      if (password !== process.env.ADMIN_PASSWORD) {
+    const adminPass = email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase()
+        ? process.env.ADMIN_PASSWORD
+        : email.toLowerCase() === (process.env.ADMIN_EMAIL_2||'').toLowerCase()
+        ? process.env.ADMIN_PASSWORD_2
+        : process.env.ADMIN_PASSWORD_3;
+      if (password !== adminPass) {
         return res.status(401).json({ success: false, message: 'Invalid credentials.' });
       }
       admin = await Admin.create({ email: email.toLowerCase(), password, name: 'Admin' });
