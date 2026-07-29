@@ -10,65 +10,6 @@ const { sendAdminLoginOTP } = require('../utils/email');
 
 // ── POST /api/admin/auth/login ─────────────────────────────────
 // Step 1: Email + Password → send email OTP
-router.post('/login', adminIPCheck, adminLimiter, async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ success: false, message: 'Email and password required.' });
-
-    const allowedEmails = [
-      process.env.ADMIN_EMAIL.toLowerCase(),
-      (process.env.ADMIN_EMAIL_2 || '').toLowerCase(),
-      (process.env.ADMIN_EMAIL_3 || '').toLowerCase(),
-    ].filter(e => e);
-    if (!allowedEmails.includes(email.toLowerCase())) {
-      return res.status(401).json({ success: false, message: 'Invalid credentials.' });
-    }
-
-    let admin = await Admin.findOne({ email: email.toLowerCase() });
-
-    const adminPass = email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase()
-        ? process.env.ADMIN_PASSWORD
-        : email.toLowerCase() === (process.env.ADMIN_EMAIL_2||'').toLowerCase()
-        ? process.env.ADMIN_PASSWORD_2
-        : process.env.ADMIN_PASSWORD_3;
-      if (password !== adminPass) {
-        return res.status(401).json({ success: false, message: 'Invalid credentials.' });
-      }
-      admin = await Admin.create({ email: email.toLowerCase(), password, name: 'Admin' });
-    } else {
-      const match = await admin.comparePassword(password);
-      if (!match) {
-        // Log failed attempt
-        admin.loginHistory.push({ ip: req.ip, userAgent: req.get('User-Agent'), time: new Date(), success: false });
-        await admin.save();
-        return res.status(401).json({ success: false, message: 'Invalid credentials.' });
-      }
-    }
-
-    if (!admin.isActive) return res.status(403).json({ success: false, message: 'Admin account disabled.' });
-
-    // Send email OTP
-    const otp = generateOTP();
-    const { createHash } = require('crypto');
-    admin.emailOTP = createHash('sha256').update(otp).digest('hex');
-    admin.emailOTPExpires = new Date(Date.now() + 10 * 60000); // 10 min
-    admin.emailOTPVerified = false;
-    await admin.save();
-
-    await sendAdminLoginOTP(admin.email, otp, req.ip);
-
-    res.json({
-      success: true,
-      message: 'Verification code sent to your email.',
-      step: admin.twoFactorEnabled ? 'email_otp' : 'email_otp',
-      requires2FA: admin.twoFactorEnabled,
-      adminId: admin._id, // used for next step
-    });
-  } catch (err) {
-    console.error('Admin login error:', err);
-    res.status(500).json({ success: false, message: 'Server error.' });
-  }
-});
 
 // ── POST /api/admin/auth/verify-email-otp ─────────────────────
 // Step 2: Verify email OTP
