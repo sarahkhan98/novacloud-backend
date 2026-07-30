@@ -9,10 +9,70 @@ const { generateAdminToken, generateOTP } = require('../utils/tokens');
 const { sendAdminLoginOTP } = require('../utils/email');
 
 // ── POST /api/admin/auth/login ─────────────────────────────────
-// Step 1: Email + Password → send email OTP
+router.post('/login', adminIPCheck, adminLimiter, async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ success: false, message: 'Email and password required.' });
+
+    const allowedEmails = [
+      (process.env.ADMIN_EMAIL || '').toLowerCase(),
+      (process.env.ADMIN_EMAIL_2 || '').toLowerCase(),
+      (process.env.ADMIN_EMAIL_3 || '').toLowerCase(),
+    ].filter(e => e.length > 0);
+
+    if (!allowedEmails.includes(email.toLowerCase())) {
+      return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+    }
+
+    let admin = await Admin.findOne({ email: email.toLowerCase() });
+
+    if (!admin) {
+      let adminPass = '';
+      if (email.toLowerCase() === (process.env.ADMIN_EMAIL || '').toLowerCase()) {
+        adminPass = process.env.ADMIN_PASSWORD || '';
+      } else if (email.toLowerCase() === (process.env.ADMIN_EMAIL_2 || '').toLowerCase()) {
+        adminPass = process.env.ADMIN_PASSWORD_2 || '';
+      } else if (email.toLowerCase() === (process.env.ADMIN_EMAIL_3 || '').toLowerCase()) {
+        adminPass = process.env.ADMIN_PASSWORD_3 || '';
+      }
+      if (!adminPass || password !== adminPass) {
+        return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+      }
+      admin = await Admin.create({ email: email.toLowerCase(), password, name: 'Admin' });
+    } else {
+      const match = await admin.comparePassword(password);
+      if (!match) {
+        admin.loginHistory.push({ ip: req.ip, userAgent: req.get('User-Agent'), time: new Date(), success: false });
+        await admin.save();
+        return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+      }
+    }
+
+    if (!admin.isActive) return res.status(403).json({ success: false, message: 'Admin account disabled.' });
+
+    const otp = generateOTP();
+    const { createHash } = require('crypto');
+    admin.emailOTP = createHash('sha256').update(otp).digest('hex');
+    admin.emailOTPExpires = new Date(Date.now() + 10 * 60000);
+    admin.emailOTPVerified = false;
+    await admin.save();
+
+    await sendAdminLoginOTP(admin.email, otp, req.ip);
+
+    res.json({
+      success: true,
+      message: 'Verification code sent to your email.',
+      step: 'email_otp',
+      requires2FA: admin.twoFactorEnabled,
+      adminId: admin._id,
+    });
+  } catch (err) {
+    console.error('Admin login error:', err);
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+});
 
 // ── POST /api/admin/auth/verify-email-otp ─────────────────────
-// Step 2: Verify email OTP
 router.post('/verify-email-otp', adminIPCheck, adminLimiter, async (req, res) => {
   try {
     const { adminId, otp } = req.body;
@@ -32,18 +92,16 @@ router.post('/verify-email-otp', adminIPCheck, adminLimiter, async (req, res) =>
     admin.emailOTPExpires = undefined;
     await admin.save();
 
-    // If 2FA enabled → require TOTP next
     if (admin.twoFactorEnabled && admin.twoFactorVerified) {
       return res.json({
         success: true,
         message: 'Email verified. Please enter your 2FA code.',
         step: 'totp',
         adminId: admin._id,
-        tempToken: generateAdminToken(admin._id, false), // partial token - no full access
+        tempToken: generateAdminToken(admin._id, false),
       });
     }
 
-    // 2FA not set up → give full token but prompt setup
     const token = generateAdminToken(admin._id, true);
     admin.lastLogin = new Date();
     admin.lastLoginIP = req.ip;
@@ -64,14 +122,10 @@ router.post('/verify-email-otp', adminIPCheck, adminLimiter, async (req, res) =>
 });
 
 // ── POST /api/admin/auth/verify-2fa ───────────────────────────
-// Step 3: Verify TOTP code from Google Authenticator
 router.post('/verify-2fa', adminIPCheck, adminLimiter, async (req, res) => {
   try {
     const { adminId, totpCode } = req.body;
     const admin = await Admin.findById(adminId);
-    if (!admin || !admin.emailOTPVerified && !admin.twoFactorEnabled) {
-      // Must have completed email OTP first — check via temp flow
-    }
     if (!admin || !admin.twoFactorEnabled || !admin.twoFactorSecret) {
       return res.status(400).json({ success: false, message: '2FA not set up.' });
     }
@@ -104,12 +158,11 @@ router.post('/verify-2fa', adminIPCheck, adminLimiter, async (req, res) => {
 });
 
 // ── POST /api/admin/auth/setup-2fa ────────────────────────────
-// Generate QR code for Google Authenticator setup
 router.post('/setup-2fa', adminProtect, async (req, res) => {
   try {
     const admin = await Admin.findById(req.admin._id);
     const secret = speakeasy.generateSecret({
-      name: `${process.env.TOTP_ISSUER || 'HamzaInvestor'} (${admin.email})`,
+      name: `${process.env.TOTP_ISSUER || 'Novacloud47'} (${admin.email})`,
       length: 20,
     });
     admin.twoFactorSecret = secret.base32;
@@ -130,7 +183,6 @@ router.post('/setup-2fa', adminProtect, async (req, res) => {
 });
 
 // ── POST /api/admin/auth/confirm-2fa ──────────────────────────
-// Confirm 2FA setup with first TOTP code
 router.post('/confirm-2fa', adminProtect, async (req, res) => {
   try {
     const { totpCode } = req.body;
